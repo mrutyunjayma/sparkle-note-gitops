@@ -1,0 +1,43 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: sparkle-note-frontend
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io   # cleans up on delete
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+    notifications.argoproj.io/subscribe.on-sync-succeeded.slack: devops-alerts
+    notifications.argoproj.io/subscribe.on-sync-failed.slack: devops-alerts
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/mrutyunjayma/sparkle-note-gitops  # ← your GitOps repo
+    targetRevision: main
+    path: apps/frontend
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: sparkle-note
+
+  syncPolicy:
+    automated:
+      prune: true        # delete resources removed from git
+      selfHeal: true     # revert manual kubectl changes
+      allowEmpty: false
+    syncOptions:
+      - PrunePropagationPolicy=foreground
+      - ApplyOutOfSyncOnly=true   # skip already-in-sync resources
+    retry:
+      limit: 3
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 3m
+
+  # Ignore differences managed outside GitOps (e.g. HPA replica count)
+  ignoreDifferences:
+    - group: apps
+      kind: Deployment
+      jsonPointers:
+        - /spec/replicas   # HPA manages this
